@@ -18,15 +18,16 @@ CMD_CREATE_TAG = "tag_create"
 CMD_DELETE_TAG = "tag_delete"
 CMD_TAG_LOC = "tag_location"
 CMD_UNTAG_LOC = "untag_location"
-CMD_CURR_LOC = "current_location"
+CMD_CURR_DEST = "current_destination"
 CMD_CURR_TAG = "current_tag"
-CMD_SET_LOC = "set_location"
+CMD_SET_DEST = "set_destination"
+CMD_CLEAR_DEST = "clear_destination"
 CMD_SET_CURR_TAG = "set_curr_tag"
 CMD_TEST = "test_input"
 CMD_HELP = "help"
 
 
-COMMANDS = {CMD_HELP, CMD_LIST, CMD_TEST, CMD_TAG_LIST, CMD_CREATE_TAG, CMD_DELETE_TAG, CMD_REFRESH, CMD_TAG_LOC, CMD_UNTAG_LOC, CMD_SET_CURR_TAG, CMD_CURR_TAG}
+COMMANDS = {CMD_HELP, CMD_LIST, CMD_TEST, CMD_TAG_LIST, CMD_CREATE_TAG, CMD_DELETE_TAG, CMD_REFRESH, CMD_TAG_LOC, CMD_UNTAG_LOC, CMD_SET_CURR_TAG, CMD_CURR_TAG, CMD_CURR_DEST,CMD_SET_DEST, CMD_CLEAR_DEST}
 
 --Constants
 ALL_TAG = "All"
@@ -100,10 +101,14 @@ end
 function refreshLocations() 
     local all_locs = {}
     if teleporter_inventory.getItemDetail(1) ~= nil then
-        table.insert(all_locs, teleporter_inventory.getItemDetail(1).displayName)
+        all_locs[teleporter_inventory.getItemDetail(1).displayName] = 1
     end
     for slot, item in pairs(source_inventory.list()) do
-        table.insert(all_locs, source_inventory.getItemDetail(slot).displayName)
+        if all_locs[source_inventory.getItemDetail(slot).displayName] ~= nil then
+            return false, "Duplicates detected across both inventories"
+        else
+            all_locs[source_inventory.getItemDetail(slot).displayName] = 1
+        end
     end
     table.sort(all_locs)
     local current_tags = storage.read()
@@ -115,8 +120,9 @@ function listLocations()
     local current_tags = storage.read()
     local ret_table = {} 
     for k,v in pairs(current_tags[current_tag]) do
-        table.insert(ret_table, v)
+        table.insert(ret_table, k)
     end
+    table.sort(ret_table)
     return ret_table
 end
 
@@ -124,8 +130,9 @@ function listAllLocations()
     local current_tags = storage.read()
     local ret_table = {}
     for k,v in pairs(current_tags[ALL_TAG]) do
-        table.insert(ret_table, v)
+        table.insert(ret_table, k)
     end
+    table.sort(ret_table)
     return ret_table
 end
 
@@ -139,17 +146,13 @@ function tagLocation(tag, location)
         end
     end
     if actual_tag == nil then return false, "tag doesn't exist" end
-    for _, value in pairs(current_tags[ALL_TAG]) do
-        if string.lower(value) == string.lower(location) then
+    for key, _ in pairs(current_tags[ALL_TAG]) do
+        if string.lower(key) == string.lower(location) then
             -- check to see if location already in tag
-            for _, value in pairs(current_tags[actual_tag]) do
-                if string.lower(value) == string.lower(location) then return false, "location already tagged" end
+            if current_tags[actual_tag][key] ~= nil then
+                return false, "location already in tag"
             end
-            table.insert(current_tags[actual_tag], value)
-            table.sort(current_tags[actual_tag])
-            for k,v in pairs(current_tags[actual_tag]) do 
-                print(k .. " -> " .. v)
-            end
+            current_tags[actual_tag][key] = 1
             return storage.writeTable(current_tags)
         end
     end
@@ -167,10 +170,8 @@ function untagLocation(tag, location)
     end
     if actual_tag == nil then return false, "tag doesn't exist" end
     for key, value in pairs(current_tags[actual_tag]) do
-        print(key .. " -> " .. value)
-        if string.lower(value) == string.lower(location) then
-            table.remove(current_tags[actual_tag], key)
-            table.sort(current_tags[actual_tag])
+        if string.lower(key) == string.lower(location) then
+            current_tags[actual_tag][key] = nil
             return storage.writeTable(current_tags)
         end
     end
@@ -192,9 +193,26 @@ function currentTag()
     return current_tag
 end
 
+function currentDestination()
+    if teleporter_inventory.getItemDetail(1) == nil then
+        return nil
+    else
+        return teleporter_inventory.getItemDetail(1).displayName
+    end
+end
+
+function clearDestination()
+    if teleporter_inventory.getItemDetail(1) == nil then
+        return true
+    end
+    transfered_items = source_inventory.pullItems(DESTINATION_NAME, 1)
+    return transfered_items == 1
+end 
+
+
 
 function getSlotForName(name)
-    if teleporter_inventory.getItemDetail(1).displayName == name then
+    if teleporter_inventory.getItemDetail(1) ~= nil and teleporter_inventory.getItemDetail(1).displayName == name then
         return ITEM_IN_TELEPORTER_INVENTORY
     end
     for slot, item in pairs(source_inventory.list()) do
@@ -205,15 +223,18 @@ function getSlotForName(name)
     return NOT_FOUND
 end
 
-function teleportTo(dest_name)
-    slot = getSlotForName(dest_name)
+function setDestination(dest_name)
+    local slot = getSlotForName(dest_name)
     if slot == ITEM_IN_TELEPORTER_INVENTORY then
         return
     end
     if slot == NOT_FOUND then
         return false, "destination not found"
     end
-    source_inventory.pullItems(DESTINATION_NAME, 1) --clean out teleporter
+    local cleared_destination = clearDestination()
+    if not cleared_destination then
+        return false, "unable to clean out destination"
+    end 
     source_inventory.pushItems(DESTINATION_NAME, slot, 1, 1)
     current_loc = getCurrentLoc()
     return true, nil
@@ -268,7 +289,7 @@ end
 function helpCmd()
     local command_to_help_with = string.lower(cmdInput(CMD_HELP, "command to help with (all if unsure)", function(text) return completion.choice(text, COMMANDS) end))
     if command_to_help_with == "all" then
-        local output = "list of commands "
+        local output = "list of commands -> "
         for _,command in pairs(COMMANDS) do
             output = output .. command .. ", "
         end
@@ -276,6 +297,32 @@ function helpCmd()
         cmdOutput(CMD_HELP, output)
     elseif command_to_help_with == CMD_TEST then
         cmdOutput(CMD_HELP, "test -> test to see what your input looks like to the shell(this is a development command)")
+    elseif string.lower(cmd) == CMD_CREATE_TAG then
+        cmdOutput(CMD_HELP, "create a tag")
+    elseif string.lower(cmd) == CMD_DELETE_TAG then 
+        cmdOutput(CMD_HELP, "delete a tag")
+    elseif string.lower(cmd) == CMD_TAG_LIST then
+        cmdOutput(CMD_HELP, "list current tags")
+    elseif string.lower(cmd) == CMD_LIST then
+        cmdOutput(CMD_HELP, "list all locations under the current tag")
+    elseif string.lower(cmd) == CMD_REFRESH then
+        cmdOutput(CMD_HELP, "refresh -> refresh the locations under the " .. ALL_TAG .. " tag")
+    elseif string.lower(cmd) == CMD_TAG_LOC then
+        cmdOutput(CMD_HELP, "add a location to a tag")
+    elseif string.lower(cmd) == CMD_UNTAG_LOC then
+        cmdOutput(CMD_HELP, "remove a location from a tag")
+    elseif string.lower(cmd) == CMD_SET_CURR_TAG then
+        cmdOutput(CMD_HELP, "set the current tag for autocomplete and listing purposes")
+    elseif string.lower(cmd) == CMD_CURR_TAG then
+        cmdOutput(CMD_HELP, "get the current tag for autocomplete and listing purposes")
+    elseif string.lower(cmd) == CMD_CURR_DEST then
+        cmdOutput(CMD_HELP, "get the current destination you are teleporting to ")
+    elseif string.lower(cmd) == CMD_CLEAR_DEST then
+        cmdOutput(CMD_HELP, "clear the current destination you are teleporting to ")
+    elseif string.lower(cmd) == CMD_SET_DEST then
+        cmdOutput(CMD_HELP, "set the current destination you are teleporting to")
+    else
+        cmdOutput(SHELL_NAME, "Invalid Command")
     end
 end
 
@@ -357,6 +404,34 @@ end
 function currentTagCmd()
     cmdOutput(CMD_CURR_TAG, "Current tag is " .. current_tag)
 end
+
+function currentDestinationCmd()
+    local current_destination = currentDestination()
+    if current_destination == nil then
+        cmdOutput(CMD_CURR_DEST, "No Destination Set")
+    else
+        cmdOutput(CMD_CURR_DEST, "Destination set to " .. current_destination)
+    end
+end
+
+function clearDestinationCmd()
+    local cleared_destination = clearDestination()
+    if cleared_destination then 
+        cmdOutput(CMD_CLEAR_DEST, "Destination cleared successfully")
+    else
+        cmdOutput(CMD_CLEAR_DEST, "Failed to clear destination; check source inventory for overfill")
+    end
+end
+
+function setDestinationCmd()
+    local destination_name = cmdInput(CMD_SET_DEST, "destination to tp to", function(text) return completion.choice(text, listLocations()) end)
+    local success, err_msg = setDestination(destination_name)
+    if success then
+        cmdOutput(CMD_SET_DEST, "Set teleporter destination to " .. destination_name .. " successfully")
+    else
+        cmdOutput(CMD_SET_DEST, "Failed to set teleport destination, reason -> " .. err_msg)
+    end
+end
     
 
 function shellThread()
@@ -386,6 +461,12 @@ function shellThread()
             setCurrentTagCmd()
         elseif string.lower(cmd) == CMD_CURR_TAG then
             currentTagCmd()
+        elseif string.lower(cmd) == CMD_CURR_DEST then
+            currentDestinationCmd()
+        elseif string.lower(cmd) == CMD_CLEAR_DEST then
+            clearDestinationCmd()
+        elseif string.lower(cmd) == CMD_SET_DEST then
+            setDestinationCmd()
         else
             cmdOutput(SHELL_NAME, "Invalid Command")
         end
