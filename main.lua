@@ -28,7 +28,7 @@ CMD_HELP = "help"
 
 
 COMMANDS = {CMD_HELP, CMD_LIST, CMD_TEST, CMD_TAG_LIST, CMD_CREATE_TAG, CMD_DELETE_TAG, CMD_REFRESH, CMD_TAG_LOC, CMD_UNTAG_LOC, CMD_SET_CURR_TAG, CMD_CURR_TAG, CMD_CURR_DEST,CMD_SET_DEST, CMD_CLEAR_DEST}
-
+HELP_COMMANDS = {'all', CMD_HELP, CMD_LIST, CMD_TEST, CMD_TAG_LIST, CMD_CREATE_TAG, CMD_DELETE_TAG, CMD_REFRESH, CMD_TAG_LOC, CMD_UNTAG_LOC, CMD_SET_CURR_TAG, CMD_CURR_TAG, CMD_CURR_DEST,CMD_SET_DEST, CMD_CLEAR_DEST}
 --Constants
 ALL_TAG = "All"
 ITEM_IN_TELEPORTER_INVENTORY = 0
@@ -226,7 +226,7 @@ end
 function setDestination(dest_name)
     local slot = getSlotForName(dest_name)
     if slot == ITEM_IN_TELEPORTER_INVENTORY then
-        return
+        return true, nil
     end
     if slot == NOT_FOUND then
         return false, "destination not found"
@@ -246,7 +246,7 @@ function shellPrompt()
 end
 
 function cmdOutput(cmd_name, output) 
-    print(string.format("[%s] %s",cmd_name, output))
+    print(string.format("%s", output))
 end
 
 function getTrimmedString(input)
@@ -273,7 +273,7 @@ function getTrimmedString(input)
 end
 
 function cmdInput(cmd_name, request_string, completion_function)
-    write(string.format("(%s)(%s)> ",cmd_name, request_string))
+    write(string.format("(%s)> ", request_string))
     local user_input = read(nil, nil, completion_function)
     
 
@@ -285,15 +285,22 @@ function cmdInput(cmd_name, request_string, completion_function)
     return trimmed_user_input
 end
 
+function writeDividingLine()
+    width, height = term.getSize()
+    for i=1,width do
+        term.write("-")
+    end
+end
+
 --Shell Functions
 function helpCmd()
-    local command_to_help_with = string.lower(cmdInput(CMD_HELP, "command to help with (all if unsure)", function(text) return completion.choice(text, COMMANDS) end))
+    local command_to_help_with = string.lower(cmdInput(CMD_HELP, "command to help with (all if unsure)", function(text) return completion.choice(text, HELP_COMMANDS) end))
     if command_to_help_with == "all" then
         local output = "list of commands -> "
         for _,command in pairs(COMMANDS) do
             output = output .. command .. ", "
         end
-        output = string.sub(1, string.len(output)-2)
+        output = string.sub(output, 1, string.len(output)-2)
         cmdOutput(CMD_HELP, output)
     elseif command_to_help_with == CMD_TEST then
         cmdOutput(CMD_HELP, "test -> test to see what your input looks like to the shell(this is a development command)")
@@ -438,6 +445,7 @@ function shellThread()
     while true do
         shellPrompt()
         local cmd = getTrimmedString(read(nil, nil, function(text) return completion.choice(text, COMMANDS) end))
+        writeDividingLine()
         if string.lower(cmd) == CMD_TEST then
             user_input = cmdInput(CMD_TEST, "test characters", nil)
             cmdOutput(CMD_TEST, string.format("[%s]",user_input))
@@ -470,6 +478,7 @@ function shellThread()
         else
             cmdOutput(SHELL_NAME, "Invalid Command")
         end
+        writeDividingLine()
     end
 end
 
