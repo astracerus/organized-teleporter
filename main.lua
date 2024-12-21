@@ -26,7 +26,7 @@ CMD_TEST = "test_input"
 CMD_HELP = "help"
 
 
-COMMANDS = {CMD_HELP, CMD_LIST, CMD_TEST, CMD_TAG_LIST, CMD_CREATE_TAG, CMD_DELETE_TAG, CMD_REFRESH}
+COMMANDS = {CMD_HELP, CMD_LIST, CMD_TEST, CMD_TAG_LIST, CMD_CREATE_TAG, CMD_DELETE_TAG, CMD_REFRESH, CMD_TAG_LOC, CMD_UNTAG_LOC, CMD_SET_CURR_TAG, CMD_CURR_TAG}
 
 --Constants
 ALL_TAG = "All"
@@ -46,7 +46,7 @@ function stubOutAllTag() --necessary for performance optimization
     local current_tags = storage.read()
     if current_tags[ALL_TAG] == nil then
         current_tags[ALL_TAG] = {}
-        storage.write(current_tags)
+        storage.writeTable(current_tags)
     end
 end
 
@@ -106,15 +106,92 @@ function refreshLocations()
         table.insert(all_locs, source_inventory.getItemDetail(slot).displayName)
     end
     table.sort(all_locs)
-
+    local current_tags = storage.read()
+    current_tags[ALL_TAG] = all_locs
+    return storage.writeTable(current_tags)
 end
+
 function listLocations() 
     local current_tags = storage.read()
-    for k,v in ipairs(current_tags[current_tag]) do
-        ret_table[k] = v
+    local ret_table = {} 
+    for k,v in pairs(current_tags[current_tag]) do
+        table.insert(ret_table, v)
     end
     return ret_table
 end
+
+function listAllLocations()
+    local current_tags = storage.read()
+    local ret_table = {}
+    for k,v in pairs(current_tags[ALL_TAG]) do
+        table.insert(ret_table, v)
+    end
+    return ret_table
+end
+
+function tagLocation(tag, location)
+    local current_tags = storage.read()
+    local actual_tag = nil
+    for value, _ in pairs(current_tags) do
+        if string.lower(value) == string.lower(tag) then
+            actual_tag = value
+            break
+        end
+    end
+    if actual_tag == nil then return false, "tag doesn't exist" end
+    for _, value in pairs(current_tags[ALL_TAG]) do
+        if string.lower(value) == string.lower(location) then
+            -- check to see if location already in tag
+            for _, value in pairs(current_tags[actual_tag]) do
+                if string.lower(value) == string.lower(location) then return false, "location already tagged" end
+            end
+            table.insert(current_tags[actual_tag], value)
+            table.sort(current_tags[actual_tag])
+            for k,v in pairs(current_tags[actual_tag]) do 
+                print(k .. " -> " .. v)
+            end
+            return storage.writeTable(current_tags)
+        end
+    end
+    return false, "location doesn't exist"
+end
+
+function untagLocation(tag, location)
+    local current_tags = storage.read()
+    local actual_tag = nil
+    for value, _ in pairs(current_tags) do
+        if string.lower(value) == string.lower(tag) then
+            actual_tag = value
+            break
+        end
+    end
+    if actual_tag == nil then return false, "tag doesn't exist" end
+    for key, value in pairs(current_tags[actual_tag]) do
+        print(key .. " -> " .. value)
+        if string.lower(value) == string.lower(location) then
+            table.remove(current_tags[actual_tag], key)
+            table.sort(current_tags[actual_tag])
+            return storage.writeTable(current_tags)
+        end
+    end
+    return false, "location doesn't exist in tag"
+end
+
+function setCurrentTag(tag)
+    local current_tags = storage.read()
+    for value, _  in pairs(current_tags) do
+        if string.lower(value) == string.lower(tag) then
+            current_tag = value
+            return true, nil 
+        end
+    end
+    return false, "tag doesn't exist"
+end
+
+function currentTag() 
+    return current_tag
+end
+
 
 function getSlotForName(name)
     if teleporter_inventory.getItemDetail(1).displayName == name then
@@ -192,7 +269,7 @@ function helpCmd()
     local command_to_help_with = string.lower(cmdInput(CMD_HELP, "command to help with (all if unsure)", function(text) return completion.choice(text, COMMANDS) end))
     if command_to_help_with == "all" then
         local output = "list of commands "
-        for _,command in ipairs(COMMANDS) do
+        for _,command in pairs(COMMANDS) do
             output = output .. command .. ", "
         end
         output = string.sub(1, string.len(output)-2)
@@ -224,18 +301,63 @@ end
 
 function listTagsCmd()
     local tagList = listTags()
-    for _, tag in ipairs(tagList) do
+    for _, tag in pairs(tagList) do
         cmdOutput(CMD_TAG_LIST, tag)
     end
 end
 
 function listLocationsCmd()
     locs = listLocations()
-    for _,loc in ipairs(locs) do
+    for _,loc in pairs(locs) do
         cmdOutput(CMD_LIST, loc)
     end
-end  
+end
 
+function refreshLocationsCmd()
+    success, err_msg = refreshLocations()
+    if success then 
+        cmdOutput(CMD_REFRESH, "Locations refreshed successfully")
+    else
+        cmdOutput(CMD_REFRESH, "Failed to refresh locations, reason -> " .. err_msg)
+    end
+end
+
+function tagLocationCmd()
+    local tag = cmdInput(CMD_TAG_LOC, "tag to add location to", function(text) return completion.choice(text, listTags()) end)
+    local location = cmdInput(CMD_TAG_LOC, "location to tag", function(text) return completion.choice(text, listAllLocations()) end)
+    local success, err_msg = tagLocation(tag, location)
+    if success then
+        cmdOutput(CMD_TAG_LOC, "Location " .. location .. " added to tag " .. tag)
+    else
+        cmdOutput(CMD_TAG_LOC, "Failed to tag location, reason -> " .. err_msg)
+    end
+end
+
+function untagLocationCmd()
+    local tag = cmdInput(CMD_UNTAG_LOC, "tag to remove location from", function(text) return completion.choice(text, listTags()) end)
+    local location = cmdInput(CMD_UNTAG_LOC, "location to untag", function(text) return completion.choice(text, listAllLocations()) end)
+    local success, err_msg = untagLocation(tag, location)
+    if success then
+        cmdOutput(CMD_UNTAG_LOC, "Location " .. location .. " removed from tag " .. tag)
+    else
+        cmdOutput(CMD_UNTAG_LOC, "Failed to untag location, reason -> " .. err_msg)
+    end
+end
+
+function setCurrentTagCmd()
+    local tag = cmdInput(CMD_SET_CURR_TAG, "tag to switch to", function(text) return completion.choice(text, listTags()) end)
+    local success, err_msg = setCurrentTag(tag)
+    if success then
+        cmdOutput(CMD_SET_CURR_TAG, "Tag set to " .. tag)
+    else
+        cmdOutput(CMD_SET_CURR_TAG, "Failed to set current tag, reason -> " .. err_msg)
+    end
+end
+
+function currentTagCmd()
+    cmdOutput(CMD_CURR_TAG, "Current tag is " .. current_tag)
+end
+    
 
 function shellThread()
     while true do
@@ -254,6 +376,16 @@ function shellThread()
             listTagsCmd()
         elseif string.lower(cmd) == CMD_LIST then
             listLocationsCmd()
+        elseif string.lower(cmd) == CMD_REFRESH then
+            refreshLocationsCmd()
+        elseif string.lower(cmd) == CMD_TAG_LOC then
+            tagLocationCmd()
+        elseif string.lower(cmd) == CMD_UNTAG_LOC then
+            untagLocationCmd()
+        elseif string.lower(cmd) == CMD_SET_CURR_TAG then
+            setCurrentTagCmd()
+        elseif string.lower(cmd) == CMD_CURR_TAG then
+            currentTagCmd()
         else
             cmdOutput(SHELL_NAME, "Invalid Command")
         end
@@ -263,7 +395,7 @@ end
 shellThread()
 
 -- old main function
--- for _, data in ipairs(getWarpScrolls()) do
+-- for _, data in pairs(getWarpScrolls()) do
 --     print(data[2])
 -- end
 
