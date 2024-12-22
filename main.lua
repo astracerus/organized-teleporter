@@ -1,9 +1,10 @@
 --Config 
-DESTINATION_NAME = "ars_nouveau:repository_0"
+DESTINATION_NAME = "ars_nouveau:repository_1"
 teleporter_inventory = peripheral.wrap(DESTINATION_NAME)
-SOURCE_NAME = "sophisticatedstorage:chest_0"
+SOURCE_NAME = "sophisticatedstorage:chest_3"
 source_inventory = peripheral.wrap(SOURCE_NAME)
 SHELL_NAME="teleport"
+monitor = peripheral.find("monitor")
 
 
 --Globals
@@ -28,7 +29,10 @@ CMD_HELP = "help"
 
 
 COMMANDS = {CMD_HELP, CMD_LIST, CMD_TEST, CMD_TAG_LIST, CMD_CREATE_TAG, CMD_DELETE_TAG, CMD_REFRESH, CMD_TAG_LOC, CMD_UNTAG_LOC, CMD_SET_CURR_TAG, CMD_CURR_TAG, CMD_CURR_DEST,CMD_SET_DEST, CMD_CLEAR_DEST}
-HELP_COMMANDS = {'all', CMD_HELP, CMD_LIST, CMD_TEST, CMD_TAG_LIST, CMD_CREATE_TAG, CMD_DELETE_TAG, CMD_REFRESH, CMD_TAG_LOC, CMD_UNTAG_LOC, CMD_SET_CURR_TAG, CMD_CURR_TAG, CMD_CURR_DEST,CMD_SET_DEST, CMD_CLEAR_DEST}
+HELP_COMMANDS = {'all'}
+for _,command in ipairs(COMMANDS) do
+    table.insert(HELP_COMMANDS, command)
+end
 --Constants
 ALL_TAG = "All"
 ITEM_IN_TELEPORTER_INVENTORY = 0
@@ -482,13 +486,17 @@ function shellThread()
     end
 end
 
-shellThread()
+--monitor thread
+--idea, have button class with 3 states -> currently selected, enabled, disabled
+-- give it x and y coordinates. 
 
--- old main function
--- for _, data in pairs(getWarpScrolls()) do
---     print(data[2])
--- end
+function monitorThread()
+    while true do
+        local event, side, x, y = os.pullEvent("monitor_touch")
+        monitor.clear()
+        monitor.setCursorPos(1,1)
+        monitor.write("Monitor was touched @ (" .. x .. "," .. y .. ")")
+    end
+end
 
--- write("(teleport)> ")
--- destination = read()
--- teleportTo(destination)
+parallel.waitForAll(shellThread, monitorThread)
