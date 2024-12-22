@@ -11,6 +11,15 @@ monitor = peripheral.find("monitor")
 storage = peripheral.find("nbtStorage")
 completion = require "cc.completion"
 
+-- monitor globals
+VIEWING_LOCATIONS = true
+VIEWING_TAGS = false
+viewing_current = VIEWING_LOCATIONS
+ENTRIES_PER_SCREEN = 8
+curr_display_pagination_idx = 1
+
+buttons = {} 
+
 --COMMAND LIST
 CMD_LIST = "list_locations"
 CMD_REFRESH = "refresh_locations"
@@ -210,6 +219,7 @@ function clearDestination()
         return true
     end
     transfered_items = source_inventory.pullItems(DESTINATION_NAME, 1)
+    current_loc = getCurrentLoc()
     return transfered_items == 1
 end 
 
@@ -248,7 +258,7 @@ end
 --idea, have button class with 3 states -> currently selected, enabled, disabled
 --define it with (x,y) start, length, text inside, and onTouch callback
 
-SELECTED_COLOR = colors.green
+ACTIVE_COLOR = colors.green
 ENABLED_COLOR = colors.lightGray
 DISABLED_COLOR = colors.gray
 
@@ -267,7 +277,7 @@ local Button = {
     color = ENABLED_COLOR,
     onClick = function(self) end,
     inArea = function(self,x,y)
-        return self.y == y and (x <= self.x + self.length and x >= self.x)
+        return self.y == y and (x < self.x + self.length and x >= self.x)
     end,
     draw = function(self)
         monitor.setBackgroundColor(self.color)
@@ -299,23 +309,117 @@ function Button:new(o)
 end
 
 
-function monitorThread()
-    local mon_width, mon_height = monitor.getSize()
-    test = Button:new({x = 1, y= 1, length = mon_width, text = "test", color = ENABLED_COLOR})
-    test:draw()
-    test2 = Button:new({x = 1, y = 3, length = mon_width, text = "Abydos", color = SELECTED_COLOR})
-    test2:draw()
 
-    buttons_list = {test, test2}
-    while true do
-        local event, side, x, y = os.pullEvent("monitor_touch")
-        resetMonitor()
-        monitor.setCursorPos(1,1)
-        for _, button in ipairs(buttons_list) do
-            if button:inArea(x, y) then
-                monitor.write("Button " .. button.text .. " was clicked")
+
+function drawUI()
+    resetMonitor()
+    local width, height = monitor.getSize()
+    if viewing_current == VIEWING_LOCATIONS then
+        local topline = ""
+        if current_tag == ALL_TAG then
+            topline = "Locations"
+        else 
+            topline = "Locations Tagged " .. current_tag
+        end
+        monitor.setCursorPos(width/2 - string.len(topline)/2, 1)
+        monitor.write(topline)
+
+        local locations = listLocations()
+        local paginated_loc_list = {unpack(locations, curr_display_pagination_idx, curr_display_pagination_idx + ENTRIES_PER_SCREEN - 1)}
+
+        buttons = {}
+        for i=1,ENTRIES_PER_SCREEN do
+            if paginated_loc_list[i] ~= nil then
+                local button_color = colors.black
+                if current_loc == paginated_loc_list[i] then 
+                    button_color = ACTIVE_COLOR
+                else
+                    button_color = ENABLED_COLOR
+                end
+                local button = Button:new({x=1, y=2*i+1,length=width, text=paginated_loc_list[i], color=button_color,  onClick=function(self) setDestination(self.text) end})
+                table.insert(buttons, button)
             end
         end
+        local arrow_key_y = (2 * ENTRIES_PER_SCREEN) + 3
+        if curr_display_pagination_idx ~= 1 then --if the left button should be enabled
+            local left_arrow_button = Button:new({x=1, y=arrow_key_y, length=1, text="<", color=ENABLED_COLOR, onClick=function(self) curr_display_pagination_idx = curr_display_pagination_idx - ENTRIES_PER_SCREEN end})
+            table.insert(buttons, left_arrow_button)
+        else
+            local left_arrow_button = Button:new({x=1, y=arrow_key_y, length=1, text="<", color=DISABLED_COLOR, onClick=function(self) end})
+            table.insert(buttons, left_arrow_button)
+        end
+
+        if curr_display_pagination_idx * ENTRIES_PER_SCREEN < #locations then
+            local right_arrow_button = Button:new({x=width, y=arrow_key_y, length=1, text=">", color=ENABLED_COLOR, onClick=function(self) curr_display_pagination_idx = curr_display_pagination_idx + ENTRIES_PER_SCREEN end})
+            table.insert(buttons, right_arrow_button)
+        else
+            local right_arrow_button = Button:new({x=width, y=arrow_key_y, length=1, text=">", color=DISABLED_COLOR, onClick=function(self) end})
+            table.insert(buttons, right_arrow_button)
+        end
+
+        local view_other_button = Button:new({x=3, y=arrow_key_y, length=width-4, text="View Tags", color=ENABLED_COLOR, onClick=function(self) viewing_current = VIEWING_TAGS end})
+        table.insert(buttons, view_other_button)
+    else
+        local topline = "Tags"
+        monitor.setCursorPos(width/2 - string.len(topline)/2, 1)
+        monitor.write(topline)
+
+        local tags = listTags()
+        local paginated_tag_list = {unpack(tags, curr_display_pagination_idx, curr_display_pagination_idx + ENTRIES_PER_SCREEN - 1)}
+
+        buttons = {}
+        for i=1,ENTRIES_PER_SCREEN do
+            if paginated_tag_list[i] ~= nil then
+                local button_color = colors.black
+                if current_tag == paginated_tag_list[i] then 
+                    button_color = ACTIVE_COLOR
+                else
+                    button_color = ENABLED_COLOR
+                end
+                local button = Button:new({x=1, y=2*i+1,length=width, text=paginated_tag_list[i], color=button_color,  onClick=function(self) setCurrentTag(self.text) end})
+                table.insert(buttons, button)
+            end
+        end
+        local arrow_key_y = (2 * ENTRIES_PER_SCREEN) + 3
+        if curr_display_pagination_idx ~= 1 then --if the left button should be enabled
+            local left_arrow_button = Button:new({x=1, y=arrow_key_y, length=1, text="<", color=ENABLED_COLOR, onClick=function(self) curr_display_pagination_idx = curr_display_pagination_idx - ENTRIES_PER_SCREEN end})
+            table.insert(buttons, left_arrow_button)
+        else
+            local left_arrow_button = Button:new({x=1, y=arrow_key_y, length=1, text="<", color=DISABLED_COLOR, onClick=function(self) end})
+            table.insert(buttons, left_arrow_button)
+        end
+
+        if curr_display_pagination_idx * ENTRIES_PER_SCREEN < #tags then
+            local right_arrow_button = Button:new({x=width, y=arrow_key_y, length=1, text=">", color=ENABLED_COLOR, onClick=function(self) curr_display_pagination_idx = curr_display_pagination_idx + ENTRIES_PER_SCREEN end})
+            table.insert(buttons, right_arrow_button)
+        else
+            local right_arrow_button = Button:new({x=width, y=arrow_key_y, length=1, text=">", color=DISABLED_COLOR, onClick=function(self) end})
+            table.insert(buttons, right_arrow_button)
+        end
+
+        local view_other_button = Button:new({x=3, y=arrow_key_y, length=width-4, text="View Locations", color=ENABLED_COLOR, onClick=function(self) viewing_current = VIEWING_LOCATIONS end})
+        table.insert(buttons, view_other_button)
+    end
+    for _,button in ipairs(buttons) do
+        button:draw()
+    end
+end
+
+
+
+function monitorThread()
+    local mon_width, mon_height = monitor.getSize()
+    drawUI()
+    while true do
+        local event, side, x, y = os.pullEvent("monitor_touch")
+        --do Event Processing
+        for _, button in ipairs(buttons) do
+            if button:inArea(x, y) then
+                button:onClick()
+            end
+        end
+        --redraw UI
+        drawUI()
     end
 end
 
@@ -558,6 +662,9 @@ function shellThread()
             cmdOutput(SHELL_NAME, "Invalid Command")
         end
         writeDividingLine()
+            --fully reset the monitor each time a command is run
+        curr_display_pagination_idx = 1
+        drawUI()
     end
 end
 
