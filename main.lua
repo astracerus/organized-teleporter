@@ -244,6 +244,81 @@ function setDestination(dest_name)
     return true, nil
 end
 
+--monitor thread
+--idea, have button class with 3 states -> currently selected, enabled, disabled
+--define it with (x,y) start, length, text inside, and onTouch callback
+
+SELECTED_COLOR = colors.green
+ENABLED_COLOR = colors.lightGray
+DISABLED_COLOR = colors.gray
+
+function resetMonitor()
+    monitor.setBackgroundColor(colors.black)
+    monitor.clear()
+end
+
+--implemented because it looks like touchpoint has terminal redirects, which I don't want given the shell
+
+local Button = {
+    x = 1,
+    y = 1,
+    length = 1,
+    text = "",
+    color = ENABLED_COLOR,
+    onClick = function(self) end,
+    inArea = function(self,x,y)
+        return self.y == y and (x <= self.x + self.length and x >= self.x)
+    end,
+    draw = function(self)
+        monitor.setBackgroundColor(self.color)
+        monitor.setCursorPos(self.x, self.y)
+        --get the text length right
+        display_text = ""
+        if string.len(self.text) > self.length then
+            display_text = string.sub(self.text, 1, self.length)
+        elseif string.len(self.text) == self.length then
+            display_text = self.text
+        else 
+            display_text = self.text
+            while string.len(display_text) < self.length do
+                display_text = " " .. display_text .. " "
+            end
+            if string.len(display_text) > self.length then
+                display_text = string.sub(display_text, 1, string.len(display_text) - 1)
+            end
+        end
+        monitor.write(display_text) 
+    end
+}
+
+function Button:new(o)
+    o = o or {} -- create object if user does not provide one
+    setmetatable(o, self)
+    self.__index = self
+    return o
+end
+
+
+function monitorThread()
+    local mon_width, mon_height = monitor.getSize()
+    test = Button:new({x = 1, y= 1, length = mon_width, text = "test", color = ENABLED_COLOR})
+    test:draw()
+    test2 = Button:new({x = 1, y = 3, length = mon_width, text = "Abydos", color = SELECTED_COLOR})
+    test2:draw()
+
+    buttons_list = {test, test2}
+    while true do
+        local event, side, x, y = os.pullEvent("monitor_touch")
+        resetMonitor()
+        monitor.setCursorPos(1,1)
+        for _, button in ipairs(buttons_list) do
+            if button:inArea(x, y) then
+                monitor.write("Button " .. button.text .. " was clicked")
+            end
+        end
+    end
+end
+
 -- Shell Helper functions
 function shellPrompt()
     write(string.format("(%s)> ", SHELL_NAME))
@@ -486,17 +561,6 @@ function shellThread()
     end
 end
 
---monitor thread
---idea, have button class with 3 states -> currently selected, enabled, disabled
--- give it x and y coordinates. 
 
-function monitorThread()
-    while true do
-        local event, side, x, y = os.pullEvent("monitor_touch")
-        monitor.clear()
-        monitor.setCursorPos(1,1)
-        monitor.write("Monitor was touched @ (" .. x .. "," .. y .. ")")
-    end
-end
-
+--actually kick off the two threads
 parallel.waitForAll(shellThread, monitorThread)
