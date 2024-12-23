@@ -1,3 +1,27 @@
+--[[
+MIT License
+
+Copyright (c) 2024 astracerus
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+]]
+
 --Config 
 DESTINATION_NAME = "ars_nouveau:repository_1"
 teleporter_inventory = peripheral.wrap(DESTINATION_NAME)
@@ -309,7 +333,6 @@ function Button:new(o)
 end
 
 function drawUI()
-    resetMonitor()
     local width, height = monitor.getSize()
     local topline = ""
     local entries = {}
@@ -380,6 +403,7 @@ function drawUI()
     table.insert(buttons, view_other_button)
 
     --draw screen
+    resetMonitor()
     monitor.setCursorPos(width/2 - string.len(topline)/2, 1)
     monitor.write(topline)
     for _,button in ipairs(buttons) do
@@ -390,7 +414,6 @@ end
 
 
 function monitorThread()
-    local mon_width, mon_height = monitor.getSize()
     drawUI()
     while true do
         local event, side, x, y = os.pullEvent("monitor_touch")
