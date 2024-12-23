@@ -23,10 +23,9 @@ SOFTWARE.
 ]]
 
 --Config 
-DESTINATION_NAME = "ars_nouveau:repository_1"
-teleporter_inventory = peripheral.wrap(DESTINATION_NAME)
-SOURCE_NAME = "sophisticatedstorage:chest_3"
-source_inventory = peripheral.wrap(SOURCE_NAME)
+TP_INVENTORY_NAME = "ars_nouveau:repository_0"
+teleporter_inventory = peripheral.wrap(TP_INVENTORY_NAME)
+source = peripheral.find('rsBridge')
 SHELL_NAME="teleport"
 
 --Globals
@@ -139,12 +138,16 @@ function refreshLocations()
     if teleporter_inventory.getItemDetail(1) ~= nil then
         all_locs[teleporter_inventory.getItemDetail(1).displayName] = 1
     end
-    for slot, item in pairs(source_inventory.list()) do
-        if all_locs[source_inventory.getItemDetail(slot).displayName] ~= nil then
-            return false, "Duplicates detected across both inventories"
-        else
-            all_locs[source_inventory.getItemDetail(slot).displayName] = 1
+    items, err_msg = source.listItems()
+    if err_msg ~= nil then
+        return false, err_msg
+    end
+    for _, item in ipairs(items) do
+        scroll_name = string.sub(item.displayName, 2, string.len(item.displayName)-1)
+        if all_locs[displayName] == scroll_name then
+            return false, "Duplicate scroll name detected during inventory search"
         end
+        all_locs[scroll_name] = item.fingerprint
     end
     table.sort(all_locs)
     local current_tags = storage.read()
@@ -239,42 +242,50 @@ end
 
 function clearDestination()
     if teleporter_inventory.getItemDetail(1) == nil then
-        return true
+        return true, nil 
     end
-    transfered_items = source_inventory.pullItems(DESTINATION_NAME, 1)
+    transfered_items, err_msg = source.importItemFromPeripheral({name = "ars_nouveau:stable_warp_scroll"}, TP_INVENTORY_NAME)
+    if err_msg ~= nil then
+        return false, err_msg
+    end
     current_loc = getCurrentLoc()
-    return transfered_items == 1
+    if transfered_items == 1 then
+        return true, nil
+    else 
+        return false, err_msg
+    end
 end 
 
-
-
-function getSlotForName(name)
-    if teleporter_inventory.getItemDetail(1) ~= nil and teleporter_inventory.getItemDetail(1).displayName == name then
-        return ITEM_IN_TELEPORTER_INVENTORY
-    end
-    for slot, item in pairs(source_inventory.list()) do
-        if source_inventory.getItemDetail(slot).displayName == name then
-            return slot
+function getActualName(dest_name)
+    local current_tags = storage.read()
+    for name, _ in pairs(current_tags[ALL_TAG]) do
+        if string.lower(name) == string.lower(dest_name) then
+            return name
         end
     end
-    return NOT_FOUND
+    return nil 
 end
 
 function setDestination(dest_name)
-    local slot = getSlotForName(dest_name)
-    if slot == ITEM_IN_TELEPORTER_INVENTORY then
+    
+    if dest_name == nil then
+        return false, "Destination doesn't exist"
+    end
+    if teleporter_inventory.getItemDetail(1) ~= nil and teleporter_inventory.getItemDetail(1).displayName == dest_name then
         return true, nil
     end
-    if slot == NOT_FOUND then
-        return false, "destination not found"
-    end
-    local cleared_destination = clearDestination()
+    local cleared_destination, err_msg = clearDestination()
     if not cleared_destination then
-        return false, "unable to clean out destination"
+        return false, "unable to clear out destination, reason -> " .. err_msg
     end 
-    source_inventory.pushItems(DESTINATION_NAME, slot, 1, 1)
+    local current_tags = storage.read()
+    count, err_msg = source.exportItemToPeripheral({fingerprint = current_tags[ALL_TAG][dest_name], count = 1}, TP_INVENTORY_NAME)
     current_loc = getCurrentLoc()
-    return true, nil
+    if count == 1 then
+        return true, nil
+    else
+        return false, err_msg
+    end
 end
 
 --Monitor Functions
@@ -401,7 +412,6 @@ function drawUI()
         curr_display_pagination_idx = 1
         end})
     table.insert(buttons, view_other_button)
-
     --draw screen
     resetMonitor()
     monitor.setCursorPos(width/2 - string.len(topline)/2, 1)
@@ -619,10 +629,11 @@ function clearDestinationCmd()
 end
 
 function setDestinationCmd()
-    local destination_name = cmdInput(CMD_SET_DEST, "destination to tp to", function(text) return completion.choice(text, listLocations()) end)
-    local success, err_msg = setDestination(destination_name)
+    local dest_name = cmdInput(CMD_SET_DEST, "destination to tp to", function(text) return completion.choice(text, listLocations()) end)
+    dest_name = getActualName(dest_name) --performance optimization to remove it out of the path of the UI, which will have the correctly typed name
+    local success, err_msg = setDestination(dest_name)
     if success then
-        cmdOutput(CMD_SET_DEST, "Set teleporter destination to " .. destination_name .. " successfully")
+        cmdOutput(CMD_SET_DEST, "Set teleporter destination to " .. dest_name .. " successfully")
     else
         cmdOutput(CMD_SET_DEST, "Failed to set teleport destination, reason -> " .. err_msg)
     end
