@@ -388,7 +388,8 @@ function drawUI()
         table.insert(buttons, left_arrow_button)
     end
 
-    if curr_display_pagination_idx * ENTRIES_PER_SCREEN < total_entries then
+
+    if (curr_display_pagination_idx + ENTRIES_PER_SCREEN - 1) < total_entries then
         local right_arrow_button = Button:new({x=width, y=arrow_key_y, length=1, text=">", color=ENABLED_COLOR, onClick=function(self) curr_display_pagination_idx = curr_display_pagination_idx + ENTRIES_PER_SCREEN end})
         table.insert(buttons, right_arrow_button)
     else
