@@ -178,6 +178,9 @@ end
 function tagLocation(tag, location)
     local current_tags = storage.read()
     local actual_tag = nil
+    if string.lower(tag) == string.lower(ALL_TAG) then
+        return false, "already in All tag, if location in system"
+    end
     for value, _ in pairs(current_tags) do
         if string.lower(value) == string.lower(tag) then
             actual_tag = value
@@ -201,6 +204,9 @@ end
 function untagLocation(tag, location)
     local current_tags = storage.read()
     local actual_tag = nil
+    if string.lower(tag) == string.lower(ALL_TAG) then
+        return false, "can't remove from All tag"
+    end
     for value, _ in pairs(current_tags) do
         if string.lower(value) == string.lower(tag) then
             actual_tag = value
@@ -415,7 +421,7 @@ function drawUI()
     table.insert(buttons, view_other_button)
     --draw screen
     resetMonitor()
-    monitor.setCursorPos(width/2 - string.len(topline)/2, 1)
+    monitor.setCursorPos(width/2 - string.len(topline)/2+1, 1)
     monitor.write(topline)
     for _,button in ipairs(buttons) do
         button:draw()
