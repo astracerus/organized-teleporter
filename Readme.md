@@ -28,3 +28,6 @@ Location Venus added to tag Ad Astra
 -----------------------------------------
 ```
 The shell will automatically trim whitespace off of the ends of all inputs.  Tab completion should be present for most commands, but will be case sensitive. The actual inputs should ignore case whenever possible. 
+
+## Pitfalls/Known Bugs
+1. Owing to the problem that finding a certain named item requires an O(n) operation and constantly querying an inventory, using a regular Minecraft inventory doesn't scale well. Use the refinedstorage branch if you want to use a large number of locations
